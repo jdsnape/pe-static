@@ -168,8 +168,7 @@ class Static(object):
 
     def get_sections(self):
         # get all section names, address, and size of data
-        results = []
-        results.append([{
+        results = ([{
             'Name': section.Name.replace(b'\x00', b'').decode('ascii'),
             'Address': hex(section.VirtualAddress),
             'Virtual Size': hex(section.Misc_VirtualSize),
