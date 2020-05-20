@@ -114,6 +114,12 @@ class Static(object):
                 print('[error] no library `ssdeep` available for import! this feature will not be available.')
 
     def get_start_address(self):
+        if platform.system() == 'Darwin':
+            objdump = 'gobjdump'
+        elif platform.system() == 'Linux':
+            objdump = 'objdump'
+        else:
+            error('script only runs on macOS or Linux', True)
         # parse objdump output to get start address of file
         out = subprocess.getoutput('%s -x %s | grep "start address"' % (objdump, self.file_name))
         if out != '\n':
@@ -400,12 +406,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if platform.system() == 'Darwin':
-        objdump = 'gobjdump'
-    elif platform.system() == 'Linux':
-        objdump = 'objdump'
-    else:
-        error('script only runs on macOS or Linux', True)
     output_err = 'output file already exists. choose another filename.'
     output_file = args.output if not os.path.exists(args.output) else error(output_err, True)
 
