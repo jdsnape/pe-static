@@ -7,7 +7,6 @@ import json
 import time
 import yara
 import pefile
-import string
 import peutils
 import hashlib
 import argparse
@@ -45,7 +44,7 @@ def get_vt_report(self, api_key, md5_hash):
 
         if jdata['response_code'] == 1:
             return jdata
-    except:
+    except Exception:
         pass
 
     return None
@@ -66,7 +65,8 @@ class Static(object):
         else:
             raise AttributeError('file is invalid and cannot be analyzed (%s)' % self.file_name)
 
-        self.url_re = r'(?i)\b((?:http[s]?:(?:/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:\'".,<>?\'\']))'
+        self.url_re = r'(?i)\b((?:http[s]?:(?:/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/) \
+                        (?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:\'".,<>?\'\']))'
         self.file_re = r'\b([\w,%-.]+\.[A-Za-z]{3,4})\b'
         self.email_re = r'((?:(?:[A-Za-z0-9]+_+)|(?:[A-Za-z0-9]+\-+)|(?:[A-Za-z0-9]+\.+)|(?:[A-Za-z0-9]+\++))*[A-Za-z0-9]+@(?:(?:\w+\-+)|(?:\w+\.))*\w{1,63}\.[a-zA-Z]{2,6})'
         self.suspicious_apis = {
@@ -84,10 +84,8 @@ class Static(object):
                  'CreateService', 'StartService']
         }
 
-
     def _load_pe(self):
         return pefile.PE(self.file_name)
-
 
     def _is_valid_executable(self, file_name):
         if os.path.exists(file_name) and os.path.isfile(file_name) and \
@@ -99,10 +97,8 @@ class Static(object):
 
         return False
 
-
     def _current_path(self):
         return os.path.abspath(os.path.dirname(__file__))
-
 
     def get_ssdeep(self):
         # try to return the ssdeep hash of file
@@ -117,7 +113,6 @@ class Static(object):
             except ImportError:
                 print('[error] no library `ssdeep` available for import! this feature will not be available.')
 
-
     def get_start_address(self):
         # parse objdump output to get start address of file
         out = subprocess.getoutput('%s -x %s | grep "start address"' % (objdump, self.file_name))
@@ -128,7 +123,6 @@ class Static(object):
                 pass
 
         return 'Not Found'
-
 
     def get_interesting_strings(self):
         # return dictionary of interesting strings found in file
@@ -150,7 +144,6 @@ class Static(object):
 
         return results
 
-
     def get_entrypoint(self):
         try:
             entrypt = self.pe.OPTIONAL_HEADER.AddressOfEntryPoint
@@ -164,9 +157,8 @@ class Static(object):
                 else:
                     position += 1
             return (entrypt, result, position)
-        except:
+        except Exception:
             return None
-
 
     def get_sections(self):
         # get all section names, address, and size of data
@@ -177,7 +169,6 @@ class Static(object):
             'Virtual Size': hex(section.Misc_VirtualSize),
             'Raw Data Size': section.SizeOfRawData} for section in self.pe.sections])
         return results
-
 
     def get_suspicious_imports(self):
         results = []
@@ -193,11 +184,10 @@ class Static(object):
 
         return results
 
-
     def get_timestamp(self):
         try:
             timestamp = self.pe.FILE_HEADER.TimeDateStamp
-        except:
+        except Exception:
             return 'Not found'
 
         if timestamp == 0:
@@ -211,7 +201,6 @@ class Static(object):
             suspicious = '[Suspicious] Future timestamp)'
         answer = '%s %s' % (datetime.fromtimestamp(timestamp), suspicious)
         return answer
-
 
     def get_security(self):
         # check file for ASLR, DEP, and SEH features
@@ -227,17 +216,16 @@ class Static(object):
 
                 if (self.pe.OPTIONAL_HEADER.DllCharacteristics & 0x0400 or
                         (hasattr(self.pe, "DIRECTORY_ENTRY_LOAD_CONFIG") and
-                        self.pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerCount > 0 and
-                        self.pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerTable != 0) or
+                            self.pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerCount > 0 and
+                            self.pe.DIRECTORY_ENTRY_LOAD_CONFIG.struct.SEHandlerTable != 0) or
                         self.pe.FILE_HEADER.Machine == 0x8664):
                     features.append('SEH')
 
             return ' '.join(features)
-        except:
+        except Exception:
             pass
 
         return features
-
 
     def get_imports(self):
         imps = {}
@@ -249,11 +237,10 @@ class Static(object):
                         imps[module.dll].append(module.imports.name)
                     else:
                         imps[module.dll] = [module.imports.name]
-        except:
+        except Exception:
             pass
 
         return imps
-
 
     def get_hashes(self):
         """ calculate hashes from file """
@@ -272,7 +259,6 @@ class Static(object):
         }
 
         return results
-
 
     def get_pehash(self):
         # compute PEHash (https://www.usenix.org/legacy/events/leet09/tech/full_papers/wicherski/wicherski_html/index.html)
@@ -340,7 +326,6 @@ class Static(object):
 
         return m.hexdigest()
 
-
     def scan(self):
         hashes = self.get_hashes()
 
@@ -393,25 +378,25 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='perform static analysis against an individual executable or an entire directory of executables')
 
     parser.add_argument('-f', '--file',
-        help='individual file name to assess',
-        action='store')
+                        help='individual file name to assess',
+                        action='store')
 
     parser.add_argument('-d', '--dir',
-        help='scan every file in directory',
-        action='store')
+                        help='scan every file in directory',
+                        action='store')
 
     parser.add_argument('-r', '--rules',
-        help='scan file with custom yara rules in this path',
-        action='store')
+                        help='scan file with custom yara rules in this path',
+                        action='store')
 
     parser.add_argument('-v', '--virustotal_key',
-        help='retrieve virustotal report with API key',
-        action='store')
+                        help='retrieve virustotal report with API key',
+                        action='store')
 
     parser.add_argument('-o', '--output',
-        help='save results as JSON to file',
-        action='store',
-        default='./static_%s.txt' % datetime.utcfromtimestamp(time.time()).strftime('%d-%M-%y_%H:%M:%S'))
+                        help='save results as JSON to file',
+                        action='store',
+                        default='./static_%s.txt' % datetime.utcfromtimestamp(time.time()).strftime('%d-%M-%y_%H:%M:%S'))
 
     args = parser.parse_args()
 
