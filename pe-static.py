@@ -11,7 +11,7 @@ import string
 import peutils
 import hashlib
 import argparse
-import commands
+import subprocess
 import requests
 import platform
 import bitstring
@@ -20,7 +20,7 @@ from datetime import datetime
 
 
 def error(msg, exit=False):
-    print('[error] %s' % msg)
+    print(('[error] %s' % msg))
     if exit:
         sys.exit(1)
 
@@ -56,7 +56,8 @@ class Static(object):
         self.results = {}
         self.file_name = file_name
         self.yara_rules = rules
-        self.check_vt = virustotal
+        # self.check_vt = virustotal
+        self.vt_key = virustotal
         self.raw_data = None
 
         if self._is_valid_executable(self.file_name):
@@ -65,7 +66,7 @@ class Static(object):
         else:
             raise AttributeError('file is invalid and cannot be analyzed (%s)' % self.file_name)
 
-        self.url_re = ur'(?i)\b((?:http[s]?:(?:/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:\'".,<>?\'\']))'
+        self.url_re = r'(?i)\b((?:http[s]?:(?:/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:\'".,<>?\'\']))'
         self.file_re = r'\b([\w,%-.]+\.[A-Za-z]{3,4})\b'
         self.email_re = r'((?:(?:[A-Za-z0-9]+_+)|(?:[A-Za-z0-9]+\-+)|(?:[A-Za-z0-9]+\.+)|(?:[A-Za-z0-9]+\++))*[A-Za-z0-9]+@(?:(?:\w+\-+)|(?:\w+\.))*\w{1,63}\.[a-zA-Z]{2,6})'
         self.suspicious_apis = {
@@ -92,7 +93,7 @@ class Static(object):
         if os.path.exists(file_name) and os.path.isfile(file_name) and \
                 os.path.getsize(file_name) > 0:
 
-            out = commands.getoutput('file -b %s' % file_name)
+            out = subprocess.getoutput('file -b %s' % file_name)
             if 'PE' in out and 'executable' in out:
                 return True
 
@@ -114,12 +115,12 @@ class Static(object):
                 import ssdeep
                 return ssdeep.hash_from_file(self.file_name)
             except ImportError:
-                print '[error] no library `ssdeep` available for import! this feature will not be available.'
+                print('[error] no library `ssdeep` available for import! this feature will not be available.')
 
 
     def get_start_address(self):
         # parse objdump output to get start address of file
-        out = commands.getoutput('%s -x %s | grep "start address"' % (objdump, self.file_name))
+        out = subprocess.getoutput('%s -x %s | grep "start address"' % (objdump, self.file_name))
         if out != '\n':
             try:
                 return out.split('start address')[1]
@@ -132,7 +133,7 @@ class Static(object):
     def get_interesting_strings(self):
         # return dictionary of interesting strings found in file
         results = {}
-        out = commands.getoutput('strings %s' % self.file_name)
+        out = subprocess.getoutput('strings %s' % self.file_name)
 
         if out != '\n':
             urls = re.compile(self.url_re, re.IGNORECASE)
@@ -144,7 +145,7 @@ class Static(object):
                 results['Files'] = files.findall(out)
                 results['Emails'] = emails.findall(out)
             except Exception as err:
-                print '[error] caught exception parsing strings (%s)' % str(err)
+                print('[error] caught exception parsing strings (%s)' % str(err))
                 pass
 
         return results
@@ -171,7 +172,7 @@ class Static(object):
         # get all section names, address, and size of data
         results = []
         results.append([{
-            'Name': section.Name.replace('\x00', ''),
+            'Name': section.Name.replace(b'\x00', b'').decode('ascii'),
             'Address': hex(section.VirtualAddress),
             'Virtual Size': hex(section.Misc_VirtualSize),
             'Raw Data Size': section.SizeOfRawData} for section in self.pe.sections])
@@ -202,12 +203,12 @@ class Static(object):
         if timestamp == 0:
             return 'Not Found'
 
-        timestamp_fmt = datetime.utcfromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
-        if (timestamp_fmt < 946692000):
+        #  timestamp_fmt = datetime.utcfromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
+        suspicious = ''
+        if (timestamp < 946692000):
             suspicious = '[Suspicious] Old timestamp)'
-        elif (timestamp_fmt > time.time()):
+        elif (timestamp > int(time.time())):
             suspicious = '[Suspicious] Future timestamp)'
-
         answer = '%s %s' % (datetime.fromtimestamp(timestamp), suspicious)
         return answer
 
@@ -244,7 +245,7 @@ class Static(object):
         try:
             for module in self.pe.DIRECTORY_ENTRY_IMPORT:
                 if module.imports.name is not None and module.imports.name != '':
-                    if module.dll in imps.keys():
+                    if module.dll in list(imps.keys()):
                         imps[module.dll].append(module.imports.name)
                     else:
                         imps[module.dll] = [module.imports.name]
@@ -286,14 +287,14 @@ class Static(object):
         pehash_bin.append(sub_chars_xor)
 
         stk_size = bitstring.BitArray(hex(self.pe.OPTIONAL_HEADER.SizeOfStackCommit))
-        stk_size_bits = string.zfill(stk_size.bin, 32)
+        stk_size_bits = str.zfill(stk_size.bin, 32)
         stk_size = bitstring.BitArray(bin=stk_size_bits)
         stk_size_xor = stk_size[8:16] ^ stk_size[16:24] ^ stk_size[24:32]
         stk_size_xor = bitstring.BitArray(bytes=stk_size_xor.tobytes())
         pehash_bin.append(stk_size_xor)
 
         hp_size = bitstring.BitArray(hex(self.pe.OPTIONAL_HEADER.SizeOfHeapCommit))
-        hp_size_bits = string.zfill(hp_size.bin, 32)
+        hp_size_bits = str.zfill(hp_size.bin, 32)
         hp_size = bitstring.BitArray(bin=hp_size_bits)
         hp_size_xor = hp_size[8:16] ^ hp_size[16:24] ^ hp_size[24:32]
         hp_size_xor = bitstring.BitArray(bytes=hp_size_xor.tobytes())
@@ -307,7 +308,7 @@ class Static(object):
 
             sect_rs = bitstring.BitArray(hex(section.SizeOfRawData))
             sect_rs = bitstring.BitArray(bytes=sect_rs.tobytes())
-            sect_rs_bits = string.zfill(sect_rs.bin, 32)
+            sect_rs_bits = str.zfill(sect_rs.bin, 32)
             sect_rs = bitstring.BitArray(bin=sect_rs_bits)
             sect_rs = bitstring.BitArray(bytes=sect_rs.tobytes())
             sect_rs_bits = sect_rs[8:32]
@@ -350,7 +351,7 @@ class Static(object):
             'PEHash': hashes['peHash'],
             'ImpHash': self.pe.get_imphash(),
             'SSDeep': self.get_ssdeep(),
-            'Type': commands.getoutput('file -b %s' % self.file_name),
+            'Type': subprocess.getoutput('file -b %s' % self.file_name),
             'Size': (os.path.getsize(self.file_name) / 1000),
             'Packed': peutils.is_probably_packed(self.pe),
 
@@ -420,17 +421,16 @@ if __name__ == '__main__':
         objdump = 'objdump'
     else:
         error('script only runs on macOS or Linux', True)
-
     output_err = 'output file already exists. choose another filename.'
-    output_file = args.outpath if not os.path.exists(args.outpath) else error(output_err, True)
+    output_file = args.output if not os.path.exists(args.output) else error(output_err, True)
 
     yara_rules = None
     if args.rules:
         yara_rules = args.rules
 
     vt_key = None
-    if args.virustotal:
-        vt_key = args.virustotal
+    if args.virustotal_key:
+        vt_key = args.virustotal_key
 
     if args.dir:
         if args.file:
@@ -457,4 +457,5 @@ if __name__ == '__main__':
     if args.output:
         if not os.path.exists(args.output):
             with open(args.output, 'a+') as fp:
+                # Convert section names from bytes to string so json can deserialize
                 json.dump(scan_results, fp, indent=2)
